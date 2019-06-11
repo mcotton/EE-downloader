@@ -1,10 +1,10 @@
-## EE-excel ##
+## EE-downloader ##
 
-You need to do some stuff to get this up and running
+This sample webapp uses the Eagle Eye prefetch API.  It handles making requests from videos from the previous 24 hours.  It also handles receiving the webhooks and storing their status in redis.  Because this is using webhooks you'll want to have a way to expose these to the internet.  The webhook receiving URL should be accessable by *.eagleeyenetworks.com
 
- - this is using python 3, should be minor work on convert backwards to python 2
- - you'll need to have requests, flask, openpyxl installed
- - create an `uploads` directory
+
+ - this is using python 3.7
+ - you'll need to have requests, flask, redis installed
  - set debug to `False `
  - `pip3 install -r requirements.txt`
  - `export FLASK_ENV=production`
@@ -15,5 +15,5 @@ You need to do some stuff to get this up and running
 
  or you can use docker
 
-  - `docker build -t ee-excel .`
-  - `docker run -d -p 4000:4000 ee-excel`
+  - `docker build -t ee-downloader .`
+  - `docker run -d -p 4000:4000 ee-downloader`
