@@ -75,6 +75,23 @@ class Camera():
             else:
                 print(f"get_video_list call failed with: {res.status_code}")
         else:
+            print(f"get_video_list call failed: {res.status_code} {url}")
+
+
+    def prefetch_video(self, instance= None, start_timestamp=None, end_timestamp=None, success_hook=None, failure_hook=None):
+
+        url = f"{instance.host}/asset/cloud/video.flv?id={self.camera_id}&start_timestamp={start_timestamp}&end_timestamp={end_timestamp}&success_hook={success_hook}&failure_hook={failure_hook}"
+        
+        res = instance.session.get(url=url)
+
+        if res:
+
+            if res.status_code == 201:
+                return res.json()['data']['uuid']
+
+            else:
+                print(f"get_video_list call failed with: {res.status_code}")
+        else:
             print("get_video_list call failed")
 
 

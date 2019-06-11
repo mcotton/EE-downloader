@@ -23,8 +23,8 @@
                             <td class="start">{{ item[2].strftime('%Y-%m-%d %H:%M:%S') }}</td>
                             <td class="end">{{ item[3].strftime('%Y-%m-%d %H:%M:%S') }}</td>
                             <td class="">{{ item[4] }}</td>
-                            <td class=""></td>
-                            <td class=""><a href="https://login.eagleeyenetworks.com/asset/play/video.mp4?id={{ template_values['camera']['camera_id'] }}&start_timestamp={{ item[0] }}&end_timestamp={{ item[1] }}">Download</a></td>
+                            <td class=""><a href="/prefetch_video/{{ template_values['camera']['camera_id'] }}/{{ item[0] }}/{{ item[1] }}">Prefetch</a></td>
+                            <td class=""><a href="https://{{ template_values['user']['active_brand_subdomain'] }}.eagleeyenetworks.com/asset/play/video.mp4?id={{ template_values['camera']['camera_id'] }}&start_timestamp={{ item[0] }}&end_timestamp={{ item[1] }}">Download</a></td>
                         </tr>
                     {% endfor %}
                     

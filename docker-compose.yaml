@@ -10,3 +10,16 @@ services:
     restart: always
     stdin_open: true
     tty: true
+    depends_on:
+     - db
+ 
+  db:
+    image: redis
+    sysctls:
+      net.core.somaxconn: 1024
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./data/redis:/data
+    entrypoint: redis-server --appendonly yes
+    restart: always

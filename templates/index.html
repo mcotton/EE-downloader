@@ -6,23 +6,12 @@
     <div class="row">
         <div class="col-md-12">
 
-            <h2>Your Devices</h2>
-
-            <p>Sometimes you get a series of events in Excel that you need video for.  That data could come from a Point of Sale (POS) System or vehicles passing through a Toll Booth or employee time clocks.</p>
-
-            <p>This sample code is to show how to easily pull the video from Eagle Eye Networks without having to manually download the data.</p>
-
         </div>
     </div>
 
     <div class="row">
         <div class="col-8 offset-2">
-            <h1>Video Events</h1>
-
-            <video width="640" height="360"  controls preload="auto" poster="">
-                <source src="" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
+            <h1>Available Cameras</h1>
         </div>
     </div>
 
@@ -37,7 +26,7 @@
                     
                     {% for cam in template_values['cameras'] %}
                         <tr>
-                            <td class="esn"><a href="camera/{{ cam['camera_id'] }}">{{ cam['camera_id'] }}</a></td>
+                            <td class="esn"><a href="/camera/{{ cam['camera_id'] }}">{{ cam['camera_id'] }}</a></td>
                             <td class="end">{{ cam['name'] }}</td>
                         </tr>
                     {% endfor %}

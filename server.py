@@ -11,17 +11,22 @@ from openpyxl import Workbook
 from openpyxl import load_workbook
 
 import requests
-
 import json
 
 import pytz
 from pytz import timezone
+
+from datetime import datetime, timedelta
+
+import redis
+db = redis.StrictRedis(host="db", decode_responses=True)
 
 from EagleEye import * 
 
 een_sessions = {}
  
 app = Flask(__name__)
+
 
 
 def login_required(f):
@@ -52,6 +57,7 @@ def home():
 
         return render_template('index.html', template_values=ret_obj)
  
+
 @app.route('/login', methods=['GET', 'POST'])
 def do_admin_login():
     if request.method == 'GET':
@@ -84,6 +90,7 @@ def do_admin_login():
         
         return redirect('/')
  
+
 @app.route("/logout")
 def logout():
     session['logged_in'] = False
@@ -95,62 +102,29 @@ def logout():
     
     session['id'] = None
     return home()
- 
-
-@app.route('/generate', methods=['GET', 'POST'])
-@login_required
-def generate_data():
-    if request.method == 'GET':
-        een = een_sessions[session['id']]
-        return render_template('devices.html', cameras=een.cameras)
-
-    if request.method == 'POST':
-        esn = request.form.get('esn')
-        start_timestamp = request.form.get('start_time').replace('-','') + '000000.000' 
-        end_timestamp = request.form.get('end_time').replace('-','') + '235959.999' 
-
-        een = een_sessions[session['id']]
-        camera = een.find_by_esn(esn)
-        camera.get_video_list(instance=een, start_timestamp=start_timestamp, end_timestamp=end_timestamp, options='coalesce')
-
-        wb = Workbook()
-        ws = wb.active
-
-        for video in camera.videos:
-            ws.append([camera.camera_id, video[0], video[1]])
-
-        filename = f"./uploads/{esn}-{start_timestamp}.xlsx"
-     
-        wb.save(filename)
-
-        return send_file(filename, as_attachment=True)
 
 
-@app.route('/upload', methods=['POST'])
-@login_required
-def upload_file():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return redirect(request.url)
 
-        f = request.files['file']
-        location = secure_filename(f.filename)
-        f.save('./uploads/' + location)
-        return redirect('/view/%s' % location, code=302)
-
-
+@app.route('/camera/<esn>/<start_timestamp>/<end_timestamp>')
 @app.route('/camera/<esn>')
 @login_required
-def camera_details(esn):
+def camera_details(esn, start_timestamp=None, end_timestamp=None):
 
     ret_obj = {}
 
     een = een_sessions[session['id']]
     cam = een.find_by_esn(esn)
     
+    if start_timestamp == None or end_timestamp == None:
+        twenty_four_hours = timedelta(hours=24)
+        start_timestamp = een._datetime_to_EEN_timestamp(datetime.utcnow() - twenty_four_hours)
+        end_timestamp = een._datetime_to_EEN_timestamp(datetime.utcnow())
+        
+
     if cam:
-        cam.get_video_list(instance=een, start_timestamp='20190606000000.000', end_timestamp='20190606235959.999', options='coalesce')
+        cam.get_video_list(instance=een, start_timestamp=start_timestamp, end_timestamp=end_timestamp, options='coalesce')
     
+        ret_obj['user'] = een.user
         ret_obj['camera'] = cam.to_dict()
         ret_obj['videos'] = [(i[0],\
                             i[1], \
@@ -159,10 +133,93 @@ def camera_details(esn):
                             een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[1])) - een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[0])))\
                             for i in cam.videos]
 
+        for i in cam.videos:
+            prefetch_video(esn, i[0], i[1])
+
     else:
         return render_template('404.html')
 
     return render_template('camera_details.html', template_values=ret_obj)
+
+
+
+@app.route('/prefetch_video/<esn>/<start_timestamp>/<end_timestamp>')
+@login_required
+def prefetch_video(esn, start_timestamp, end_timestamp):
+    een = een_sessions[session['id']]
+    cam = een.find_by_esn(esn)
+    auth_key = een_sessions[session['id']].session.cookies['auth_key']
+
+    success_hook = f"https%3A//prefetch.een.cloud/webhook/success/{cam.camera_id}"
+    failure_hook = f"https%3A//prefetch.een.cloud/webhook/failure/{cam.camera_id}"
+
+    uuid = cam.prefetch_video(instance=een, start_timestamp=start_timestamp, end_timestamp=end_timestamp, success_hook=success_hook, failure_hook=failure_hook)
+
+    db.hmset(f"{esn}:{start_timestamp}-{end_timestamp}",{
+            'uuid': str(uuid),
+            'status': str('requested'),
+            'category': str(''),
+            'auth_key': str(auth_key)
+        })
+
+    db.sadd(f"pending:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
+    db.sadd(f"pending", f"{esn}:{start_timestamp}-{end_timestamp}")
+
+
+    return esn
+
+
+
+@app.route('/webhook/<category>/<esn>', methods=['GET', 'POST'])
+@app.route('/webhook/<category>', methods=['GET', 'POST'])
+def handle_webhook(category=None, esn=None):
+
+    print('Webhook callback for %s %s: %s' % (category, esn, request.json))
+
+    start_timestamp = request.json['data'][0]['arguments']['start_timestamp']
+    end_timestamp = request.json['data'][0]['arguments']['end_timestamp']
+    esn = request.json['data'][0]['arguments']['id']
+    uuid = request.json['data'][0]['uuid']
+
+
+    if start_timestamp and end_timestamp and esn and uuid:
+
+        if category == 'success':
+            db.smove(f"pending:{esn}", f"success:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.smove(f"pending", f"success", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.hmset(f"{esn}:{start_timestamp}-{end_timestamp}",{
+                'uuid': str(uuid),
+                'status': str('returned'),
+                'category': str('success'),
+                'data': json.dumps(request.json)
+            })
+
+        elif category == 'failure':
+            db.smove(f"pending:{esn}", f"failure:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.smove(f"pending", f"failure", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.hmset(f"{esn}:{start_timestamp}-{end_timestamp}",{
+                'uuid': str(uuid),
+                'status': str('returned'),
+                'category': str('failure'),
+                'data': json.dumps(request.json)
+            })
+
+    else:
+
+        return json.dumps("")
+
+
+
+    return json.dumps(request.json)
+
+
+
+
+
+
+
+
+
 
 
 def convert_timezone(een, cam, ee_timestamp):
@@ -181,91 +238,6 @@ def convert_timezone(een, cam, ee_timestamp):
     # convert it back to een timestamp
     out_time = een._datetime_to_EEN_timestamp(local_time)
     return out_time
-
-
-
-
-@app.route('/view/<path:filename>', methods=['GET'])
-@login_required
-def view(filename):
-    wb = load_workbook('./uploads/' + filename)
-    ret_obj = {
-        'esns': {},
-        'een': een_sessions[session['id']]
-    }
-
-    if wb:
-        ws = wb.active
-
-        for row in ws.iter_rows(row_offset=2):
-            esn = row[0].value
-            start = row[1].value
-            end = row[2].value
-
-            if esn:
-                if esn in ret_obj['esns']:
-                    ret_obj['esns'][esn].append(
-                        {
-                            'start_timestamp': start,
-                            'end_timestamp': end
-                        }   
-                    )
-                else:
-                    ret_obj['esns'][esn] = [{
-                        'start_timestamp': start,
-                        'end_timestamp': end
-                    }]
-
-    return render_template('upload.html', template_values=ret_obj)
-
-
-@app.route('/api/get_info/<device_id>/<start_timestamp>/<end_timestamp>', methods=['GET'])
-@login_required
-def get_info(device_id, start_timestamp, end_timestamp):
-    auth_key = een_sessions[session['id']].session.cookies['auth_key']
-    url = f"https://login.eagleeyenetworks.com/asset/info/video?id={device_id}&start_timestamp={start_timestamp}&end_timestamp={end_timestamp}&A={auth_key}"
-    print(url)
-    print(auth_key)
-
-    print('making get_info request')
-    res = requests.get(url)
-    print('finishing get_info request')
-
-    print(f"get_info got a {res.status_code}")
-
-    if res.status_code == 200:
-
-        if res.text:
-            return res.text
-
-
-    return json.dumps({ 'proxy_status_code': res.status_code })
-
-
-@app.route('/api/fetch_video/<device_id>/<start_timestamp>/<end_timestamp>', methods=['GET'])
-@login_required
-def fetch_video(device_id, start_timestamp, end_timestamp):
-    auth_key = een_sessions[session['id']].session.cookies['auth_key']
-    url = f"https://login.eagleeyenetworks.com/asset/cloud/video.flv?id={device_id}&start_timestamp={start_timestamp}&end_timestamp={end_timestamp}$webhook_url=https%3A%2F%2Fmcotton.tech%2Fdumpster%2F&A={auth_key}"
-    print(url)
-    print(auth_key)
-    
-    print('making fetch_video request')
-    res = requests.head(url)
-    print('finished fetch_video reqeust')
-    
-    print(f"fetch_video got a {res.status_code}")
-
-    if res.status_code == 200:
-        pass
-
-    if res.status_code == 202:
-        pass
-
-
-    return json.dumps({ 'proxy_status_code': res.status_code })
-
-
 
 
 
