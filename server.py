@@ -163,7 +163,7 @@ def prefetch_video(esn, start_timestamp, end_timestamp):
         })
 
     db.sadd(f"pending:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
-    db.sadd(f"pending", f"{esn}:{start_timestamp}-{end_timestamp}")
+    db.incr("pending")
 
 
     return esn
@@ -176,17 +176,21 @@ def handle_webhook(category=None, esn=None):
 
     print('Webhook callback for %s %s: %s' % (category, esn, request.json))
 
-    start_timestamp = request.json['data'][0]['arguments']['start_timestamp']
-    end_timestamp = request.json['data'][0]['arguments']['end_timestamp']
-    esn = request.json['data'][0]['arguments']['id']
-    uuid = request.json['data'][0]['uuid']
-
+    try:
+        start_timestamp = request.json['data'][0]['arguments']['start_timestamp']
+        end_timestamp = request.json['data'][0]['arguments']['end_timestamp']
+        esn = request.json['data'][0]['arguments']['id']
+        uuid = request.json['data'][0]['uuid']
+    except TypeError:
+        print("Webhook request without POST data")
+        return json.dumps("{}")
 
     if start_timestamp and end_timestamp and esn and uuid:
 
         if category == 'success':
             db.smove(f"pending:{esn}", f"success:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
-            db.smove(f"pending", f"success", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.incrby("success", "1")
+            db.incrby("pending", "-1")
             db.hmset(f"{esn}:{start_timestamp}-{end_timestamp}",{
                 'uuid': str(uuid),
                 'status': str('returned'),
@@ -196,7 +200,8 @@ def handle_webhook(category=None, esn=None):
 
         elif category == 'failure':
             db.smove(f"pending:{esn}", f"failure:{esn}", f"{esn}:{start_timestamp}-{end_timestamp}")
-            db.smove(f"pending", f"failure", f"{esn}:{start_timestamp}-{end_timestamp}")
+            db.incrby("failure", "1")
+            db.incrby("pending", "-1")
             db.hmset(f"{esn}:{start_timestamp}-{end_timestamp}",{
                 'uuid': str(uuid),
                 'status': str('returned'),
@@ -243,4 +248,4 @@ def convert_timezone(een, cam, ee_timestamp):
 
 if __name__ == "__main__":
     app.secret_key = os.urandom(12)
-    app.run(debug=True,host='0.0.0.0', port=4000)
+    app.run(debug=True,host='0.0.0.0', port=4000,  threaded=True)
