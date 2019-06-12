@@ -1,6 +1,6 @@
 from flask import Flask
 from flask import flash, redirect, render_template, request, session 
-from flask import abort, url_for, send_file, send_from_directory
+from flask import abort, url_for, send_file, send_from_directory, jsonify
 
 import os
 from functools import wraps
@@ -20,6 +20,10 @@ from datetime import datetime, timedelta
 
 import redis
 db = redis.StrictRedis(host="db", decode_responses=True)
+
+db.set('pending', 0)
+db.set('success', 0)
+db.set('failure', 0)
 
 from EagleEye import * 
 
@@ -101,7 +105,7 @@ def logout():
             del een_sessions[session['id']]
     
     session['id'] = None
-    return home()
+    return do_admin_login()
 
 
 
@@ -130,11 +134,15 @@ def camera_details(esn, start_timestamp=None, end_timestamp=None):
                             i[1], \
                             een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[0])),\
                             een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[1])),\
-                            een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[1])) - een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[0])))\
+                            een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[1]))
+                                - een._EEN_timestamp_to_datetime(convert_timezone(een, cam, i[0])))\
                             for i in cam.videos]
 
-        for i in cam.videos:
-            prefetch_video(esn, i[0], i[1])
+
+        # automatically call prefetch on every video
+        # for i in cam.videos:
+        #     prefetch_video(esn, i[0], i[1])
+
 
     else:
         return render_template('404.html')
@@ -166,7 +174,7 @@ def prefetch_video(esn, start_timestamp, end_timestamp):
     db.incr("pending")
 
 
-    return esn
+    return jsonify(esn)
 
 
 
@@ -220,7 +228,22 @@ def handle_webhook(category=None, esn=None):
 
 
 
+@app.route('/counter')
+@login_required
+def get_counter(category=None):
 
+    pending = db.get('pending')
+    failure = db.get('failure')
+    success = db.get('success')
+
+    ret = {
+        'pending': pending or 0,
+        'failure': failure or 0,
+        'success': success or 0
+    }
+
+
+    return jsonify(ret)
 
 
 
