@@ -71,17 +71,24 @@
             failure = $('#failure');
 
 
-        window.loop = setInterval(function() {
+        function fetchCounts() {
 
             $.get('/counter', function(data) {
+                updateCounts(data);
+                setTimeout(fetchCounts, 1000)
 
-                pending.text(data['pending']);
-                success.text(data['success']);
-                failure.text(data['failure']);
+            });
 
-            })
+        }
 
-        }, 500);
+        // call it the first time
+        fetchCounts();
+
+        function updateCounts(data) {
+            pending.text(data['pending']);
+            success.text(data['success']);
+            failure.text(data['failure']);
+        }
 
         $('.prefetch_link').click(function(event) {
 
