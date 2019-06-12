@@ -42,7 +42,7 @@
                         <tr>
                             <td class="start">{{ item[2].strftime('%Y-%m-%d %H:%M:%S') }}</td>
                             <td class="end">{{ item[3].strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td class="">{{ item[4] }}</td>
+                            <td class="">{{ item[4] | string() | truncate(7, True, '', 0) }}</td>
                             <td>
                                 <a  href="#" class="prefetch_link" data-link="/prefetch_video/{{ template_values['camera']['camera_id'] }}/{{ item[0] }}/{{ item[1] }}">Prefetch</a>
                             </td>
@@ -70,10 +70,12 @@
             success = $('#success'),
             failure = $('#failure');
 
+        var esn = location.href.match(/[0-9a-zA-Z]*$/)[0];
+
 
         function fetchCounts() {
 
-            $.get('/counter', function(data) {
+            $.get('/counter/' + esn, function(data) {
                 updateCounts(data);
                 setTimeout(fetchCounts, 1000)
 
@@ -88,6 +90,9 @@
             pending.text(data['pending']);
             success.text(data['success']);
             failure.text(data['failure']);
+
+            data['successful'].forEach(function(item) {
+            })
         }
 
         $('.prefetch_link').click(function(event) {

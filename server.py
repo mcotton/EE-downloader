@@ -21,9 +21,6 @@ from datetime import datetime, timedelta
 import redis
 db = redis.StrictRedis(host="db", decode_responses=True)
 
-db.set('pending', 0)
-db.set('success', 0)
-db.set('failure', 0)
 
 from EagleEye import * 
 
@@ -228,9 +225,10 @@ def handle_webhook(category=None, esn=None):
 
 
 
-@app.route('/counter')
+@app.route('/counter/<esn>')
 @login_required
-def get_counter(category=None):
+def get_counter(esn=None):
+
 
     pending = db.get('pending')
     failure = db.get('failure')
@@ -239,7 +237,9 @@ def get_counter(category=None):
     ret = {
         'pending': pending or 0,
         'failure': failure or 0,
-        'success': success or 0
+        'success': success or 0,
+        'successful': [i for i in db.keys(f"{esn}*") if db.hgetall(i)['category'] =='success'] ,
+        'failed': [i for i in db.keys(f"{esn}*") if db.hgetall(i)['category'] =='failure']
     }
 
 
