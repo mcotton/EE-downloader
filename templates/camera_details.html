@@ -44,7 +44,7 @@
                             <td class="end">{{ item[3].strftime('%Y-%m-%d %H:%M:%S') }}</td>
                             <td class="">{{ item[4] | string() | truncate(7, True, '', 0) }}</td>
                             <td>
-                                <a  href="#" class="prefetch_link" data-link="/prefetch_video/{{ template_values['camera']['camera_id'] }}/{{ item[0] }}/{{ item[1] }}">Prefetch</a>
+                                <a  href="#" class="prefetch_link" data-link="/prefetch_video/{{ template_values['camera']['camera_id'] }}/{{ item[0] }}/{{ item[1] }}" id="prefetch-{{ item[0]| string() | truncate(14, True, '', 0) }}">Prefetch</a>
                             </td>
                             <td class=""><a href="https://{{ template_values['user']['active_brand_subdomain'] }}.eagleeyenetworks.com/asset/play/video.flv?id={{ template_values['camera']['camera_id'] }}&start_timestamp={{ item[0] }}&end_timestamp={{ item[1] }}">Download</a></td>
                         </tr>
@@ -92,6 +92,13 @@
             failure.text(data['failure']);
 
             data['successful'].forEach(function(item) {
+                id = item.match(/:([0-9a-zA-Z]*)\./)[1]
+                $('#prefetch-' + id).text('Uploaded')
+            })
+
+            data['failed'].forEach(function(item) {
+                id = item.match(/:([0-9a-zA-Z]*)\./)[1]
+                $('#prefetch-' + id).text('Failed')
             })
         }
 
