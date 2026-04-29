@@ -1,3 +1,4 @@
 uploads
 *.pyc
 data/redis/appendonly.aof
+.DS_Store
